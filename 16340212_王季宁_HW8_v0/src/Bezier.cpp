@@ -82,6 +82,37 @@ MYPOINT getB(vector<MYPOINT> points, float t, int i, int n) {
 	return getB(points, t, i - 1, n - 1) * (1 - t) + getB(points, t, i, n - 1) * t;
 }
 
+//保存中间结果
+MYPOINT getDB(vector<MYPOINT> points, float t, int i, int n, vector<MYPOINT>&result) {
+	if (n == 0) {
+		//result.push_back(points[i]);
+		return points[i];	
+	}
+	MYPOINT x = getDB(points, t, i - 1, n - 1, result) * (1 - t) + getDB(points, t, i, n - 1, result) * t;
+	result.push_back(x);
+	return x;
+}
+
+float* dynamicpoints_to_vertices(vector<MYPOINT>points) {
+	float* vertices = new float[12 * (points.size() - 1)];
+	int current = 0;
+	for (int i = 0; i < points.size() - 1; i++) {
+		vertices[current++] = points[i].x;
+		vertices[current++] = points[i].y;
+		vertices[current++] = 0.0f;
+		vertices[current++] = 1.0f;
+		vertices[current++] = 1.0f;
+		vertices[current++] = 1.0f;
+		vertices[current++] = points[i + 1].x;
+		vertices[current++] = points[i + 1].y;
+		vertices[current++] = 0.0f;
+		vertices[current++] = 1.0f;
+		vertices[current++] = 1.0f;
+		vertices[current++] = 1.0f;
+	}
+	return vertices;
+}
+
 //将二维坐标转换为vertices数组，第一个vector是绘制点的，第二个vector是绘制线的
 float* points_to_vertices(vector<MYPOINT>points, vector<MYPOINT>controlpoints) {
 	//有几个点
@@ -130,6 +161,10 @@ void processInput(GLFWwindow *window) {
 vector<MYPOINT> P;
 //定义状态是否发生了改变
 bool if_state_change = false;
+//定义帧之间相隔的时间
+//float deltaTime = 0.0f;
+//float curframe = 0.0f;
+//float lastframe = 0.0f;
 //鼠标点击的回调函数
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
@@ -138,7 +173,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 		P.push_back(MYPOINT(float((xpos - 400.0) / 400.0), float((400.0 - ypos) / 400.0)));
 		//P.push_back(MYPOINT(float(xpos), float(ypos)));
 		if_state_change = true;
-		cout << xpos << " " << ypos << endl;
+		//cout << xpos << " " << ypos << endl;
 	}
 	else {
 		if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
@@ -187,7 +222,13 @@ int main() {
 	glGenVertexArrays(1, &VAOID);
 	glGenBuffers(1, &VBOID);
 	glBindVertexArray(0);
+	unsigned int newVBOID, newVAOID;
+	//分别创建这两个对象，第一个参数的含义为返回当前n个未使用的名称
+	glGenVertexArrays(1, &newVAOID);
+	glGenBuffers(1, &newVBOID);
+	glBindVertexArray(0);
 	myshader newshader("newshader.vs", "newshader.fs");
+	myshader dyshader("newshader.vs", "newshader.fs");
 	while (!glfwWindowShouldClose(mwindow)) {
 		glfwPollEvents();
 		processInput(mwindow);
@@ -200,11 +241,21 @@ int main() {
 		newshader.usepro();
 		glBindVertexArray(VAOID);
 		glBindBuffer(GL_ARRAY_BUFFER, VBOID);
+		dyshader.usepro();
+		glBindVertexArray(newVAOID);
+		glBindBuffer(GL_ARRAY_BUFFER, newVBOID);
 		//构建顶点
 		float* vertices = NULL;
+		float* dvertices = NULL;
 		int num_of_points = 400;
+		int num = P.size();
+		float tt = (int)(float(glfwGetTime()*500.f)) % 500 / 500.f;
+		vector<MYPOINT> dynamicpoints;
+		if (num > 1) {
+			getDB(P, tt, num - 1, num - 1, dynamicpoints);
+			dvertices = dynamicpoints_to_vertices(dynamicpoints);
+		}
 		if (if_state_change) {
-			int num = P.size();
 			if (num > 1) {
 				vector<MYPOINT> temp = P;
 				//对各个控制点按照从左到右的顺序进行排序
@@ -214,7 +265,7 @@ int main() {
 				for (unsigned int i = 0; i < num_of_points; i++) {
 					t += 1.0f / num_of_points;
 					everypoints.push_back(getB(temp, t, num - 1, num - 1));
-					cout << everypoints.back().x << " " << everypoints.back().y << endl;
+					//cout << everypoints.back().x << " " << everypoints.back().y << endl;
 				}
 				vertices = points_to_vertices(everypoints, temp);
 			}
@@ -235,10 +286,29 @@ int main() {
 		if (P.size() > 1) {
 			glDrawArrays(GL_LINES, num_of_points, 2 * (P.size() - 1));
 		}
-		glBindVertexArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		delete vertices;
+		glBindVertexArray(VAOID);
+		glBindBuffer(GL_ARRAY_BUFFER, VBOID);
+		cout << dynamicpoints.size();
+		if (dynamicpoints.size() > 1) {
+			//将顶点数据复制到缓冲的内存中（VBO）
+			glBufferData(GL_ARRAY_BUFFER, 12 * (dynamicpoints.size() - 1) * sizeof(float), dvertices, GL_STATIC_DRAW);
+			//指定要修改的着色器的顶点变量ID并且启用其属性
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+			glEnableVertexAttribArray(1);
+			glDrawArrays(GL_LINES, 0, 2 * (dynamicpoints.size() - 1));
+			glBindVertexArray(newVAOID);
+			glBindBuffer(GL_ARRAY_BUFFER, newVBOID);
+		}
+		if (vertices) {
+			delete vertices;
+		}
+		if (dvertices) {
+			delete dvertices;
+		}
 		newshader.freepro();
+		dyshader.freepro();
 		glfwMakeContextCurrent(mwindow);
 		glfwSwapBuffers(mwindow);
 	}
@@ -249,3 +319,4 @@ int main() {
 	glfwTerminate();
 	return 0;
 }
+

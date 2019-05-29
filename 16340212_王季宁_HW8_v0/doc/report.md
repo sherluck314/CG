@@ -220,3 +220,60 @@ glfwSwapBuffers(mwindow);
 
 ![1](img/1.gif)
 
+
+
+## Bonus：可以动态地呈现Bezier曲线的生成过程。
+
+- 递归时保存中间结果
+
+```c++
+//保存中间结果
+MYPOINT getDB(vector<MYPOINT> points, float t, int i, int n, vector<MYPOINT>&result) {
+	if (n == 0) {
+		//result.push_back(points[i]);
+		return points[i];	
+	}
+	MYPOINT x = getDB(points, t, i - 1, n - 1, result) * (1 - t) + getDB(points, t, i, n - 1, result) * t;
+	result.push_back(x);
+	return x;
+}
+```
+
+- 将中间结果转换成坐标表示
+
+```c++
+float* vertices = new float[12 * (points.size() - 1)];
+int current = 0;
+for (int i = 0; i < points.size() - 1; i++) {
+	vertices[current++] = points[i].x;
+	vertices[current++] = points[i].y;
+	vertices[current++] = 0.0f;
+	vertices[current++] = 1.0f;
+	vertices[current++] = 1.0f;
+	vertices[current++] = 1.0f;
+	vertices[current++] = points[i + 1].x;
+	vertices[current++] = points[i + 1].y;
+	vertices[current++] = 0.0f;
+	vertices[current++] = 1.0f;
+	vertices[current++] = 1.0f;
+	vertices[current++] = 1.0f;
+}
+return vertices;
+}
+```
+
+- 让t随时间改变，获得动态效果
+
+```c++
+int num = P.size();
+float tt = (int)(float(glfwGetTime()*500.f)) % 500 / 500.f;
+vector<MYPOINT> dynamicpoints;
+if (num > 1) {
+	getDB(P, tt, num - 1, num - 1, dynamicpoints);
+	dvertices = dynamicpoints_to_vertices(dynamicpoints);
+}
+```
+
+- 效果图
+
+![2](img/2.gif)
